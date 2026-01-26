@@ -1,0 +1,359 @@
+// Prisma Schema for WinWin Travel MVP
+// Models: User, Account, Session, Reaction, Booking, UserPreferences, SearchHistory
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// NextAuth.js Required Models
+// ============================================
+
+model User {
+  id            String    @id @default(cuid())
+  email         String?   @unique
+  emailVerified DateTime?
+  name          String?
+  image         String?
+  
+  // Relations
+  accounts      Account[]
+  sessions      Session[]
+  reactions     Reaction[]
+  bookings      Booking[]
+  preferences   UserPreferences?
+  searchHistory SearchHistory[]
+  
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  @@index([email])
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+  
+  user              User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([provider, providerAccountId])
+  @@index([userId])
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+  
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+  
+  @@unique([identifier, token])
+}
+
+// ============================================
+// WinWin Travel Business Models
+// ============================================
+
+model Reaction {
+  id          String       @id @default(cuid())
+  userId      String
+  hotelId     String       // Provider's hotel ID
+  roomId      String?      // Optional: specific room
+  integration String       // Provider name (e.g., "hotelbeds", "booking")
+  type        ReactionType
+  
+  // Metadata for AI learning
+  priceAtReaction  Decimal?  @db.Decimal(10, 2)
+  starRating       Int?
+  amenities        String[]
+  
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // One reaction per user per hotel per integration
+  @@unique([userId, hotelId, integration])
+  @@index([userId])
+  @@index([hotelId, integration])
+  @@index([type])
+  @@index([createdAt])
+}
+
+enum ReactionType {
+  LIKE
+  DISLIKE
+}
+
+model Booking {
+  id              String        @id @default(cuid())
+  userId          String
+  
+  // Hotel identification
+  hotelId         String
+  hotelName       String
+  roomId          String
+  roomType        String
+  integration     String        // Provider name
+  
+  // Stay details
+  checkIn         DateTime
+  checkOut        DateTime
+  nights          Int
+  guests          Int
+  rooms           Int
+  
+  // Pricing
+  pricePerNight   Decimal       @db.Decimal(10, 2)
+  subtotal        Decimal       @db.Decimal(10, 2)
+  taxes           Decimal       @db.Decimal(10, 2)
+  fees            Decimal       @db.Decimal(10, 2)
+  totalPrice      Decimal       @db.Decimal(10, 2)
+  currency        String        @default("EUR")
+  
+  // Status tracking
+  status          BookingStatus @default(PENDING)
+  confirmationId  String?       // Provider's confirmation ID
+  
+  // Contact info (encrypted in production)
+  guestName       String
+  guestEmail      String
+  guestPhone      String?
+  specialRequests String?       @db.Text
+  
+  // Timestamps
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  confirmedAt     DateTime?
+  cancelledAt     DateTime?
+  
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([status])
+  @@index([checkIn, checkOut])
+  @@index([confirmationId])
+  @@index([createdAt])
+}
+
+enum BookingStatus {
+  PENDING         // Awaiting payment/confirmation
+  CONFIRMED       // Provider confirmed
+  CANCELLED       // User or provider cancelled
+  COMPLETED       // Stay completed
+  FAILED          // Booking failed
+  REFUND_PENDING  // Refund in process
+}
+
+model UserPreferences {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  
+  // Default search settings
+  defaultCurrency   String   @default("EUR")
+  defaultAdults     Int      @default(2)
+  defaultChildren   Int      @default(0)
+  
+  // Notification preferences
+  emailNotifications    Boolean @default(true)
+  priceAlerts           Boolean @default(true)
+  marketingEmails       Boolean @default(false)
+  
+  // AI personalization flags
+  enablePersonalization Boolean @default(true)
+  
+  // UI preferences
+  prefersDarkMode       Boolean @default(false)
+  
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+  
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model SearchHistory {
+  id           String   @id @default(cuid())
+  userId       String?  // Nullable for anonymous sessions
+  sessionId    String   // Browser session ID
+  
+  // Search parameters (stored as JSON)
+  query        Json
+  
+  // Location details
+  destination  String
+  latitude     Float?
+  longitude    Float?
+  
+  // Stay details
+  checkIn      DateTime
+  checkOut     DateTime
+  adults       Int
+  children     Int       @default(0)
+  rooms        Int       @default(1)
+  
+  // Results metadata
+  resultsCount Int
+  
+  createdAt    DateTime  @default(now())
+  
+  user         User?     @relation(fields: [userId], references: [id], onDelete: SetNull)
+  
+  @@index([userId])
+  @@index([sessionId])
+  @@index([destination])
+  @@index([createdAt])
+}
+
+// ============================================
+// Price Lock for Atomic Bookings (Redis-backed primary)
+// This model is for audit/fallback persistence
+// ============================================
+
+model PriceLock {
+  id           String   @id @default(cuid())
+  
+  // Lock identification
+  hotelId      String
+  roomId       String
+  integration  String
+  
+  // Locked pricing
+  pricePerNight Decimal  @db.Decimal(10, 2)
+  totalPrice    Decimal  @db.Decimal(10, 2)
+  currency      String
+  
+  // Lock metadata
+  sessionId    String
+  userId       String?
+  
+  // TTL tracking (Redis primary, this is backup)
+  expiresAt    DateTime
+  
+  createdAt    DateTime @default(now())
+  
+  @@unique([hotelId, roomId, integration, sessionId])
+  @@index([expiresAt])
+}
+
+// ============================================
+// Supplier Data (Cache for RAG & Universal Search)
+// ============================================
+
+model SupplierData {
+  id           String   @id @default(cuid())
+  hotelId      String   @unique
+  integration  String
+  
+  // Content for embedding
+  name         String
+  description  String?  @db.Text
+  amenities    String[]
+  locationName String?
+  
+  // High-value attributes for AI
+  starRating   Int?
+  priceRange   String?
+  themes       String[] // e.g., ["boutique", "wine", "beach"]
+  
+  // Vector alignment
+  contentHash  String   // To detect changes for re-indexing
+  indexedAt    DateTime?
+  
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([integration])
+}
+
+// ============================================
+// Agency Intelligence (Step 2.2)
+// ============================================
+
+model AgencyPreferences {
+  id              String   @id @default(cuid())
+  agencyId        String   @unique // Root agency ID
+  
+  // Supplier weights (mapping provider name -> boost/penalty)
+  // e.g., {"hotelbeds": 1.2, "booking": 0.8}
+  supplierWeights Json
+  
+  // Preferred commissions (mapping provider -> min percentage)
+  commissions     Json
+  
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model SupplierPerformance {
+  id              String   @id @default(cuid())
+  supplierId      String   @unique
+  integration     String
+  
+  // Aggregated metrics
+  bookingCount    Int      @default(0)
+  failureRate     Float    @default(0.0)
+  avgCommission   Decimal  @db.Decimal(5, 2)
+  sentimentScore  Float    @default(0.0) // Aggregated agent feedback
+  
+  updatedAt       DateTime @updatedAt
+
+  @@index([integration])
+}
+
+// ============================================
+// Predictive Intelligence (Step 3.1)
+// ============================================
+
+model PriceHistory {
+  id              String   @id @default(cuid())
+  hotelId         String
+  roomId          String?
+  integration     String
+  
+  price           Decimal  @db.Decimal(10, 2)
+  currency        String   @default("EUR")
+  
+  recordedAt      DateTime @default(now())
+  
+  @@index([hotelId, recordedAt])
+  @@index([integration])
+}
+
+model DemandSignal {
+  id              String   @id @default(cuid())
+  destination     String
+  searchCount     Int      @default(0)
+  bookingCount    Int      @default(0)
+  
+  strength        Float    @default(0.0) // 0-1 normalized signal
+  trend           String?  // "RISING", "STABLE", "FALLING"
+  
+  updatedAt       DateTime @updatedAt
+
+  @@unique([destination])
+  @@index([trend])
+}
