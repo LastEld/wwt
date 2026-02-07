@@ -1,0 +1,123 @@
+# Создание Недостающих Страниц WinWin Travel
+
+## Описание проблемы
+В навигации присутствуют ссылки на `/deals`, `/experiences`, `/auth/signin`, но сами страницы отсутствуют (404).
+
+## Существующие ресурсы для интеграции
+
+| Сервис | Назначение | Применение |
+|--------|-----------|------------|
+| [pricing-service.ts](file:///e:/evidenceWWT/src/services/ai/pricing-service.ts) | Расчёт цен, VAT, скидки | Deals — показ скидок |
+| [itinerary-service.ts](file:///e:/evidenceWWT/src/services/ai/itinerary-service.ts) | Генерация маршрутов AI | Experiences — создание маршрутов |
+| [proposal-service.ts](file:///e:/evidenceWWT/src/services/ai/proposal-service.ts) | Брендированные предложения | Experiences — пакетные туры |
+| `DemandSignal` (Prisma) | Тренды спроса | Deals — "Trending Now" |
+| [auth.config.ts](file:///e:/evidenceWWT/src/lib/auth.config.ts) | NextAuth Google/Facebook | Sign In |
+
+---
+
+## Proposed Changes
+
+### 1. Deals Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/deals/page.tsx)
+Страница акций и специальных предложений:
+- **Hero секция** с заголовком "Exclusive Deals"
+- **Trending Destinations** — карточки с DemandSignal трендами
+- **Flash Deals** — отели с AI-driven скидками (используя pricing-service)
+- **Price Drop Alerts** — форма подписки на снижение цен
+- **Интеграция**: GET `/api/deals` → mock data + DemandSignal из БД
+
+#### [NEW] [route.ts](file:///e:/evidenceWWT/src/app/api/deals/route.ts)
+API endpoint для получения:
+- Trending destinations из DemandSignal
+- Mock flash deals с расчётом скидок через PricingService
+
+---
+
+### 2. Experiences Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/experiences/page.tsx)
+Страница впечатлений и маршрутов:
+- **Hero** с "Curated Journeys" и AI-тематикой
+- **Featured Experiences** — карточки готовых маршрутов
+- **AI Itinerary Generator** — форма + кнопка "Generate My Journey"
+- **Proposal Cards** — результаты генерации через proposal-service
+- **Интеграция**: POST `/api/ai/itinerary` (уже есть) + proposal-service
+
+#### [NEW] [ExperienceCard.tsx](file:///e:/evidenceWWT/src/components/experiences/ExperienceCard.tsx)
+Компонент карточки Experience с:
+- Изображение, название, длительность, цена
+- "View Journey" кнопка
+
+---
+
+### 3. Sign In Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/auth/signin/page.tsx)
+Кастомная страница входа для NextAuth:
+- **Logo + Branding** WinWin Travel
+- **OAuth buttons**: Google, Facebook (из auth.config.ts)
+- **Luxury styling** соответствующий общему дизайну
+- **Redirect handling** через `callbackUrl`
+
+> [!IMPORTANT]  
+> NextAuth уже настроен с `pages: { signIn: '/auth/signin' }` в auth.config.ts.
+> Нужно только создать UI страницу.
+
+---
+
+### Структура новых файлов
+
+```
+src/app/
+├── deals/
+│   └── page.tsx          [NEW]
+├── experiences/
+│   └── page.tsx          [NEW]
+├── auth/
+│   └── signin/
+│       └── page.tsx      [NEW]
+└── api/
+    └── deals/
+        └── route.ts      [NEW]
+
+src/components/
+└── experiences/
+    └── ExperienceCard.tsx [NEW]
+```
+
+---
+
+## Verification Plan
+
+### Automated Tests
+> Проект использует Vitest (`npm run test:unit`), но в src/ нет тестовых файлов.  
+> Все найденные [.test.ts](file:///e:/evidenceWWT/node_modules/zod/src/v4/mini/tests/index.test.ts) файлы находятся в `node_modules`.
+
+### Browser Testing (Primary)
+Использую browser_subagent для автоматической проверки:
+
+1. **Deals Page**
+   - Navigate to `http://localhost:3000/deals`
+   - Verify: Hero section, Deal cards, No 404
+   - Take screenshot
+
+2. **Experiences Page**
+   - Navigate to `http://localhost:3000/experiences`
+   - Verify: Hero section, Experience cards, AI generator form
+   - Take screenshot
+
+3. **Sign In Page**
+   - Navigate to `http://localhost:3000/auth/signin`
+   - Verify: OAuth buttons (Google, Facebook), Branding
+   - Take screenshot
+
+4. **Navigation Flow**
+   - From Homepage → click each nav link → verify no 404
+   - Full journey: Home → Deals → Experiences → Sign In → Back
+
+### Manual Verification (User)
+Если требуется:
+1. Открыть http://localhost:3000
+2. Нажать на каждую ссылку в навигации
+3. Проверить визуальное соответствие дизайну

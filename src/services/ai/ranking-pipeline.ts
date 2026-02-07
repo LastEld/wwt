@@ -35,7 +35,7 @@ export class RankingPipeline {
 
             // Step 2.2: Add Intelligent Supplier Matching score
             const businessMatching = await MatchingService.getSupplierScore(
-                candidate.offer.hotelId,
+                candidate.offer.id,
                 candidate.offer.provider
             );
 

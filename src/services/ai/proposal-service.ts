@@ -36,7 +36,7 @@ export class ProposalService {
             clientName: "Valued Client",
             title: itinerary.title,
             summary: `A bespoke journey through ${itinerary.destination}, curated specifically for your preferences. This exclusive proposal features neural-matched properties and hand-selected experiences.`,
-            totalPrice: itinerary.totalPrice,
+            totalPrice: itinerary.totalEstimatedPrice,
             currency: itinerary.currency,
             days: itinerary.days.map(day => ({
                 ...day,

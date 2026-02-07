@@ -35,13 +35,30 @@ export class PriceLockService {
             expiresAt: expiresAt.toISOString()
         };
 
-        // 1. Store in Redis for fast validation
-        if (!redis) throw new Error("Redis connection unavailable for price lock");
-        await redis.setex(key, this.LOCK_TTL, JSON.stringify(lockPayload));
+        // 1. Store in Redis for fast validation (optional in dev)
+        if (redis && redis.status === "ready") {
+            await redis.setex(key, this.LOCK_TTL, JSON.stringify(lockPayload));
+        } else {
+            logger.warn({ lockId }, "Redis unavailable or not ready, skipping fast cache for price lock");
+        }
 
         // 2. Backup in Prisma for audit/long-term tracking
-        await prisma.priceLock.create({
-            data: {
+        await prisma.priceLock.upsert({
+            where: {
+                hotelId_roomId_integration_sessionId: {
+                    hotelId: data.hotelId,
+                    roomId: data.roomId,
+                    integration: data.integration,
+                    sessionId: data.sessionId,
+                }
+            },
+            update: {
+                id: lockId,
+                pricePerNight: data.pricePerNight,
+                totalPrice: data.totalPrice,
+                expiresAt: expiresAt
+            },
+            create: {
                 id: lockId,
                 hotelId: data.hotelId,
                 roomId: data.roomId,
@@ -72,15 +89,33 @@ export class PriceLockService {
      * Validates a lock token and returns the locked data.
      */
     static async validateLock(token: string): Promise<PriceLockData | null> {
+        if (!token || typeof token !== 'string') return null;
         const [lockId, signature] = token.split(".");
-        if (!lockId || !signature) return null;
 
         const key = `${this.REDIS_PREFIX}${lockId}`;
-        if (!redis) throw new Error("Redis connection unavailable for lock validation");
-        const cached = await redis.get(key);
-        if (!cached) return null;
+        let data: any = null;
 
-        const data = JSON.parse(cached);
+        if (redis && redis.status === "ready") {
+            const cached = await redis.get(key);
+            if (cached) data = JSON.parse(cached);
+        }
+
+        if (!data) {
+            // Fallback to Prisma if not in Redis
+            const dbLock = await prisma.priceLock.findUnique({ where: { id: lockId } });
+            if (!dbLock || new Date() > dbLock.expiresAt) return null;
+            data = {
+                hotelId: dbLock.hotelId,
+                roomId: dbLock.roomId,
+                integration: dbLock.integration,
+                pricePerNight: dbLock.pricePerNight,
+                totalPrice: dbLock.totalPrice,
+                currency: dbLock.currency,
+                sessionId: dbLock.sessionId,
+                userId: dbLock.userId,
+                expiresAt: dbLock.expiresAt.toISOString()
+            };
+        }
 
         // Verify signature (Cross-check with stored session info)
         const tokenSource = `${lockId}:${data.totalPrice}:${data.currency}:${data.sessionId}`;
@@ -101,8 +136,9 @@ export class PriceLockService {
      * Releases a lock early (e.g., after booking success).
      */
     static async releaseLock(token: string): Promise<void> {
+        if (!token || typeof token !== "string") return;
         const [lockId] = token.split(".");
-        if (lockId && redis) {
+        if (lockId && redis.status === "ready") {
             await redis.del(`${this.REDIS_PREFIX}${lockId}`);
         }
     }

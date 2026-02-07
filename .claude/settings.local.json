@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__ams__task_list",
+      "mcp__ams__roadmap_list",
+      "mcp__ams__task_eisenhower",
+      "Bash(dir:*)",
+      "mcp__ams__unified_vitals",
+      "Bash(npm run build:*)",
+      "mcp__ams__gsd_vitals",
+      "mcp__ams__gsd_dash",
+      "mcp__ams__unified_stats"
+    ]
+  }
+}

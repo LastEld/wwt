@@ -1,0 +1,26 @@
+# План устранения ошибки TypeError в профиле
+
+Исправление ошибки `Cannot read properties of undefined (reading 'max')` в `src/app/profile/page.tsx`.
+
+## Proposed Changes
+
+### [Frontend] Profile Page
+#### [MODIFY] [page.tsx](file:///e:/evidenceWWT/src/app/profile/page.tsx)
+- Добавить проверку на наличие ключа `error` в ответе API.
+- Использовать опциональную цепочку (`?.`) или значения по умолчанию при обращении к `aiProfile.preferredPriceRange`.
+- Добавить проверку на наличие `preferredPriceRange` перед рендерингом блока чувствительности к цене.
+
+### [Backend] AI Profile API
+#### [MODIFY] [route.ts](file:///e:/evidenceWWT/src/app/api/ai/profile/route.ts)
+- Убедиться, что API всегда возвращает валидный объект профиля или явную ошибку, которую фронтенд может обработать.
+
+## Verification Plan
+
+### Manual Verification
+1. Открыть страницу профиля под пользователем без истории (Demo Mode).
+2. Убедиться, что страница загружается без ошибок и показывает "Start exploring to build your neural profile" или значения по умолчанию.
+3. Перейти к бронированию и лайкнуть отель.
+4. Вернуться в профиль и проверить, что данные подгрузились и отображаются корректно.
+
+### Automated Tests
+- Запустить `npm run dev` и проверить консоль браузера на наличие ошибок при переходе в `/profile`.

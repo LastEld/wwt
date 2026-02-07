@@ -1,9 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { Star, Heart, MapPin, Sparkles, ChevronLeft, ChevronRight } from "lucide-react";
-import Image from "next/image";
 import { useHotelReaction } from "../../hooks/use-hotel-reaction";
 
 import { HotelOffer } from "../../integrations/integration-adapter.interface";
@@ -13,9 +13,10 @@ interface HotelCardProps {
 }
 
 export const HotelCard = ({ hotel }: HotelCardProps) => {
+    const router = useRouter();
     const [currentImg, setCurrentImg] = useState(0);
     const { mutate: react, isPending: isSubmitting } = useHotelReaction(hotel.id);
-    const [isLiked, setIsLiked] = useState(false); // Initially false, ideally fetched from a query
+    const [isLiked, setIsLiked] = useState(false);
 
     const handleToggleLike = async () => {
         const nextState = !isLiked;
@@ -135,7 +136,10 @@ export const HotelCard = ({ hotel }: HotelCardProps) => {
                     )}
                 </div>
 
-                <button className="w-full py-4 rounded-2xl bg-brand text-white text-sm font-bold uppercase tracking-widest hover:bg-brand-gold hover:shadow-premium transition-all active:scale-95">
+                <button
+                    onClick={() => router.push(`/hotel/${hotel.id}?name=${encodeURIComponent(hotel.name)}&provider=${hotel.provider}&price=${hotel.price.amount}`)}
+                    className="w-full py-4 rounded-2xl bg-brand text-white text-sm font-bold uppercase tracking-widest hover:bg-brand-gold hover:shadow-premium transition-all active:scale-95"
+                >
                     View Property
                 </button>
             </div>

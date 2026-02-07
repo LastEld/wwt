@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import { SearchHero } from "@/components/search/SearchHero";
 import { FilterBar } from "@/components/search/FilterBar";
 import { HotelCard } from "@/components/search/HotelCard";
@@ -8,20 +9,26 @@ import { useSocket } from "@/components/providers/socket-provider";
 import { motion, AnimatePresence } from "framer-motion";
 import { Loader2, Sparkles } from "lucide-react";
 
-export default function SearchPage() {
+function SearchContent() {
+    const searchParams = useSearchParams();
     const [results, setResults] = useState<any[]>([]);
+    const [facets, setFacets] = useState<any>(null);
     const [isLoading, setIsLoading] = useState(false);
     const [searchStatus, setSearchStatus] = useState<string | null>(null);
-    const { socket, isConnected } = useSocket();
+    const [activeFilters, setActiveFilters] = useState<string[]>([]);
+    const [sortBy, setSortBy] = useState("relevance");
+    const { socket } = useSocket();
+
+    const initialDestination = searchParams?.get("destination") || "";
+    const initialCheckIn = searchParams?.get("checkIn") || "";
+    const initialCheckOut = searchParams?.get("checkOut") || "";
 
     // Listen for real-time progressive results
     useEffect(() => {
         if (!socket) return;
 
         socket.on("search:partial_results", (data: any) => {
-            console.log(`[Realtime] Received ${data.count} results from ${data.provider}`);
             setResults(prev => {
-                // Simple deduplication for progressive updates
                 const existingIds = new Set(prev.map(r => r.id));
                 const newResults = data.offers.filter((o: any) => !existingIds.has(o.id));
                 return [...prev, ...newResults].sort((a, b) => (b.score || 0) - (a.score || 0));
@@ -34,42 +41,102 @@ export default function SearchPage() {
         };
     }, [socket]);
 
-    const handleSearch = async (locationName: string = "Paris") => {
+    const handleSearch = useCallback(async (params: { location: string; checkIn: string; checkOut: string; adults: number }) => {
+        const locationName = params.location || "Paris";
         setIsLoading(true);
         setResults([]);
         setSearchStatus("AI is scanning providers...");
 
+        const checkIn = params.checkIn ? new Date(params.checkIn) : new Date();
+        const checkOut = params.checkOut ? new Date(params.checkOut) : new Date(Date.now() + 86400000 * 3);
+
         try {
             const resp = await fetch("/api/search", {
                 method: "POST",
+                headers: { "Content-Type": "application/json" },
                 body: JSON.stringify({
-                    location: { name: locationName, lat: 48.8566, lng: 2.3522 },
-                    dates: { checkIn: new Date(), checkOut: new Date(Date.now() + 86400000 * 3) },
-                    occupancy: { adults: 2, children: [], rooms: 1 },
-                    userId: "alex-123" // Test persona
+                    location: { name: locationName },
+                    dates: { checkIn, checkOut },
+                    occupancy: { adults: params.adults || 2, children: [], rooms: 1 },
+                    filters: {
+                        amenities: activeFilters.length > 0 ? activeFilters : undefined,
+                    },
+                    sort: sortBy,
                 })
             });
             const data = await resp.json();
-            // Even if REST returns full results, the socket might have sent partials already.
-            // We merge to ensure consistency.
             setResults(prev => {
                 const existingIds = new Set(prev.map(r => r.id));
                 const finalResults = data.results.filter((o: any) => !existingIds.has(o.id));
                 return [...prev, ...finalResults].sort((a, b) => (b.score || 0) - (a.score || 0));
             });
+            if (data.facets) setFacets(data.facets);
         } finally {
             setIsLoading(false);
             setSearchStatus(null);
         }
+    }, [activeFilters, sortBy]);
+
+    // Auto-search if URL has destination param
+    useEffect(() => {
+        if (initialDestination) {
+            handleSearch({
+                location: initialDestination,
+                checkIn: initialCheckIn,
+                checkOut: initialCheckOut,
+                adults: 2,
+            });
+        }
+    }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+    const handleFilterToggle = (amenity: string) => {
+        setActiveFilters(prev =>
+            prev.includes(amenity) ? prev.filter(f => f !== amenity) : [...prev, amenity]
+        );
     };
+
+    const handleSortChange = (sort: string) => {
+        setSortBy(sort);
+    };
+
+    // Client-side sort
+    const sortedResults = [...results].sort((a, b) => {
+        if (sortBy === "price_asc") return a.price.amount - b.price.amount;
+        if (sortBy === "price_desc") return b.price.amount - a.price.amount;
+        if (sortBy === "rating") return b.reviewScore - a.reviewScore;
+        return (b.score || 0) - (a.score || 0);
+    });
+
+    // Client-side amenity filter
+    const filteredResults = activeFilters.length > 0
+        ? sortedResults.filter(h => activeFilters.every(f => h.amenities?.some((a: string) => a.toLowerCase().includes(f.toLowerCase()))))
+        : sortedResults;
 
     return (
         <div className="min-h-screen bg-brand-light/30">
-            <SearchHero onSearch={handleSearch} />
+            <SearchHero
+                onSearch={handleSearch}
+                initialLocation={initialDestination}
+                initialCheckIn={initialCheckIn}
+                initialCheckOut={initialCheckOut}
+                compact
+            />
 
-            <FilterBar />
+            <FilterBar
+                activeFilters={activeFilters}
+                onFilterToggle={handleFilterToggle}
+                sortBy={sortBy}
+                onSortChange={handleSortChange}
+            />
 
             <main className="max-w-7xl mx-auto px-4 pb-32">
+                {/* Result count */}
+                {filteredResults.length > 0 && !isLoading && (
+                    <p className="text-sm font-semibold text-brand-muted mb-6">
+                        {filteredResults.length} propert{filteredResults.length === 1 ? 'y' : 'ies'} found
+                    </p>
+                )}
+
                 {/* Status indicator for progressive loading */}
                 <AnimatePresence>
                     {searchStatus && (
@@ -86,9 +153,9 @@ export default function SearchPage() {
                 </AnimatePresence>
 
                 {/* Results Grid */}
-                {results.length > 0 ? (
+                {filteredResults.length > 0 ? (
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-                        {results.map((hotel, i) => (
+                        {filteredResults.map((hotel) => (
                             <HotelCard key={hotel.id} hotel={hotel} />
                         ))}
                     </div>
@@ -101,7 +168,7 @@ export default function SearchPage() {
                             <h2 className="font-display text-2xl font-bold text-brand mb-2">Ready for Discovery?</h2>
                             <p className="text-brand-muted mb-8">Enter your destination above and let our AI find your perfect stay.</p>
                             <button
-                                onClick={() => handleSearch()}
+                                onClick={() => handleSearch({ location: "Paris", checkIn: "", checkOut: "", adults: 2 })}
                                 className="bg-brand text-white px-8 py-4 rounded-2xl font-bold uppercase tracking-widest hover:bg-brand-gold hover:shadow-premium transition-all"
                             >
                                 Launch Search Engine
@@ -120,5 +187,13 @@ export default function SearchPage() {
                 )}
             </main>
         </div>
+    );
+}
+
+export default function SearchPage() {
+    return (
+        <Suspense fallback={<div className="min-h-screen bg-brand-light/30 flex items-center justify-center"><Loader2 className="w-8 h-8 animate-spin text-brand-gold" /></div>}>
+            <SearchContent />
+        </Suspense>
     );
 }

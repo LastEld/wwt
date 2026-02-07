@@ -88,7 +88,7 @@ export class SearchOrchestrator {
         // 3.5 Blend RAG Candidates (if applicable)
         // If we have candidates from RAG, ensure they are prioritized or filtered
         const blendedOffers = candidateIds.length > 0
-            ? uniqueOffers.filter(o => candidateIds.includes(o.hotelId) || candidateIds.includes(o.id))
+            ? uniqueOffers.filter(o => candidateIds.includes(o.id))
             : uniqueOffers;
 
         // 4. Filter

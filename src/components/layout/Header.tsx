@@ -36,16 +36,26 @@ export const Header = () => {
 
                 {/* Actions */}
                 <div className="flex items-center gap-4">
-                    <button className="p-2 hover:bg-black/5 rounded-full transition-colors relative">
+                    <Link href="/wishlist" className="p-2 hover:bg-black/5 rounded-full transition-colors relative">
                         <Heart className="w-5 h-5 text-brand" />
                         <span className="absolute top-1 right-1 w-2 h-2 bg-brand-gold rounded-full" />
-                    </button>
+                    </Link>
 
                     {session ? (
                         <div className="flex items-center gap-4">
+                            <div className="hidden sm:block text-right">
+                                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-gold leading-none mb-1">Traveler</p>
+                                <p className="text-xs font-bold text-brand leading-none">
+                                    {session.user?.name ? session.user.name.split(' ')[0] : 'Member'}
+                                </p>
+                            </div>
                             <Link href="/profile" className="flex items-center gap-2 group">
-                                <div className="w-8 h-8 rounded-full bg-brand/10 flex items-center justify-center border border-brand/5 group-hover:border-brand-gold transition-colors">
-                                    <User className="w-4 h-4 text-brand" />
+                                <div className="w-9 h-9 rounded-full bg-brand/10 flex items-center justify-center border border-brand/5 overflow-hidden group-hover:border-brand-gold transition-colors">
+                                    {session.user?.image ? (
+                                        <img src={session.user.image} alt="" className="w-full h-full object-cover" />
+                                    ) : (
+                                        <User className="w-4 h-4 text-brand" />
+                                    )}
                                 </div>
                             </Link>
                             <button

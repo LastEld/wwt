@@ -1,0 +1,135 @@
+# Создание Недостающих Страниц WinWin Travel
+
+## Описание проблемы
+В навигации присутствуют ссылки на `/deals`, `/experiences`, `/auth/signin`, но сами страницы отсутствуют (404).
+
+## Существующие ресурсы для интеграции
+
+| Сервис | Назначение | Применение |
+|--------|-----------|------------|
+| [pricing-service.ts](file:///e:/evidenceWWT/src/services/ai/pricing-service.ts) | Расчёт цен, VAT, скидки | Deals — показ скидок |
+| [itinerary-service.ts](file:///e:/evidenceWWT/src/services/ai/itinerary-service.ts) | Генерация маршрутов AI | Experiences — создание маршрутов |
+| [proposal-service.ts](file:///e:/evidenceWWT/src/services/ai/proposal-service.ts) | Брендированные предложения | Experiences — пакетные туры |
+| `DemandSignal` (Prisma) | Тренды спроса | Deals — "Trending Now" |
+| [auth.config.ts](file:///e:/evidenceWWT/src/lib/auth.config.ts) | NextAuth Google/Facebook | Sign In |
+
+---
+
+## Proposed Changes
+
+### 1. Deals Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/deals/page.tsx)
+Страница акций и специальных предложений:
+- **Hero секция** с заголовком "Exclusive Deals"
+- **Trending Destinations** — карточки с DemandSignal трендами
+- **Flash Deals** — отели с AI-driven скидками (используя pricing-service)
+- **Price Drop Alerts** — форма подписки на снижение цен
+- **Интеграция**: GET `/api/deals` → mock data + DemandSignal из БД
+
+#### [NEW] [route.ts](file:///e:/evidenceWWT/src/app/api/deals/route.ts)
+API endpoint для получения:
+- Trending destinations из DemandSignal
+- Mock flash deals с расчётом скидок через PricingService
+
+---
+
+### 2. Experiences Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/experiences/page.tsx)
+Страница впечатлений и маршрутов:
+- **Hero** с "Curated Journeys" и AI-тематикой
+- **Featured Experiences** — карточки готовых маршрутов
+- **AI Itinerary Generator** — форма + кнопка "Generate My Journey"
+- **Proposal Cards** — результаты генерации через proposal-service
+- **Интеграция**: POST `/api/ai/itinerary` (уже есть) + proposal-service
+
+#### [NEW] [ExperienceCard.tsx](file:///e:/evidenceWWT/src/components/experiences/ExperienceCard.tsx)
+Компонент карточки Experience с:
+- Изображение, название, длительность, цена
+- "View Journey" кнопка
+
+---
+
+### 3. Sign In Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/auth/signin/page.tsx)
+Кастомная страница входа для NextAuth:
+- **Logo + Branding** WinWin Travel
+- **OAuth buttons**: Google, Facebook (из auth.config.ts)
+- **Luxury styling** соответствующий общему дизайну
+
+---
+
+### 4. Profile Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/profile/page.tsx)
+Личный кабинет пользователя:
+- **User Dashboard**: Карточки с информацией о пользователе.
+- **AI Neural Profile**: Визуализация предпочтений (Star Rating, Price Range, Amenities) через `ProfileService`.
+- **Booking History**: Список бронирований (статус, отель, даты) через [BookingService](file:///e:/evidenceWWT/src/services/transactions/booking-service.ts#21-137).
+- **Интеграция**: GET `/api/ai/profile` и GET `/api/bookings`.
+
+#### [NEW] [route.ts](file:///e:/evidenceWWT/src/app/api/ai/profile/route.ts)
+API для получения AI профиля на основе истории реакций.
+
+---
+
+### 5. Wishlist Page
+
+#### [NEW] [page.tsx](file:///e:/evidenceWWT/src/app/wishlist/page.tsx)
+Страница избранного:
+- Сетка отелей, которым пользователь поставил "Like".
+- Возможность перейти к деталям отеля или удалить из избранного.
+- **Интеграция**: GET `/api/reactions`.
+
+---
+
+### 6. API Updates
+
+#### [MODIFY] [route.ts](file:///e:/evidenceWWT/src/app/api/reactions/route.ts)
+Добавление метода [GET](file:///e:/evidenceWWT/src/app/api/ai/profile/route.ts#6-26) для получения списка избранного.
+
+#### [MODIFY] [route.ts](file:///e:/evidenceWWT/src/app/api/bookings/route.ts)
+Добавление метода [GET](file:///e:/evidenceWWT/src/app/api/ai/profile/route.ts#6-26) для получения истории бронирований.
+
+#### [MODIFY] [booking-service.ts](file:///e:/evidenceWWT/src/services/transactions/booking-service.ts)
+Добавление метода [getUserBookings(userId)](file:///e:/evidenceWWT/src/services/transactions/booking-service.ts#110-119).
+
+---
+
+### 7. Global Layout & Navigation
+
+#### [MODIFY] [Header.tsx](file:///e:/evidenceWWT/src/components/layout/Header.tsx)
+- Отображать имя пользователя ("Hello, Alex") при наличии сессии.
+- Привязать иконку Heart к `/wishlist`.
+
+---
+
+### 8. After-Login Experience
+
+#### [MODIFY] [signin/page.tsx](file:///e:/evidenceWWT/src/app/auth/signin/page.tsx)
+- Добавить кнопку **"Enter Demo Mode"** для мгновенного входа без реальных Google/Facebook API.
+
+#### [MODIFY] [page.tsx](file:///e:/evidenceWWT/src/app/page.tsx)
+- Персонализировать Hero-секцию: "Discover Your Next Escape, [Name]".
+- Добавить блок **"Neural Picks for You"**, доступный только залогиненным пользователям.
+
+#### [NEW] [confirmation/[id]/page.tsx](file:///e:/evidenceWWT/src/app/checkout/confirmation/[id]/page.tsx)
+- Выделенная страница успеха после бронирования с деталями отеля, картой и QR-кодом подтверждения.
+
+---
+
+## Verification Plan
+
+### Automated Tests
+- Мок-тест авторизации через CredentialsProvider.
+
+### Browser Testing
+1. **Demo Login**:
+   - Нажать "Enter Demo Mode".
+   - Убедиться, что Header обновился (появилось имя/аватар).
+2. **Personalized Home**:
+   - Проверить наличие приветствия на главной.
+3. **Full Flow**:
+   - Login → Search → Checkout → Confirmation Page.

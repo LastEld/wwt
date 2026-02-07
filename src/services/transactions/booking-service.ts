@@ -12,6 +12,8 @@ export interface BookingRequest {
     guestPhone?: string;
     specialRequests?: string;
     userId: string;
+    hotelName: string; // Add these
+    roomType: string;  // Add these
     checkIn: string;
     checkOut: string;
     guests: number;
@@ -36,14 +38,28 @@ export class BookingService {
 
         // 2. Perform Atomic Prisma Transaction
         return await prisma.$transaction(async (tx) => {
-            // A. Create local record (PENDING)
+            // A. Ensure user exists (required for demo/credentials mode)
+            await tx.user.upsert({
+                where: { id: req.userId },
+                update: {
+                    name: req.guestName,
+                    email: req.guestEmail
+                },
+                create: {
+                    id: req.userId,
+                    name: req.guestName,
+                    email: req.guestEmail
+                }
+            });
+
+            // B. Create local record (PENDING)
             const booking = await tx.booking.create({
                 data: {
                     userId: req.userId,
                     hotelId: lockData.hotelId,
-                    hotelName: lockData.hotelName,
+                    hotelName: req.hotelName || lockData.hotelName || "Unknown Hotel",
                     roomId: lockData.roomId,
-                    roomType: lockData.roomType,
+                    roomType: req.roomType || lockData.roomType || "Standard Room",
                     integration: lockData.integration,
                     checkIn: new Date(req.checkIn),
                     checkOut: new Date(req.checkOut),
@@ -104,6 +120,16 @@ export class BookingService {
                 // In production: trigger a separate Audit Queue to verify status.
                 throw err;
             }
+        });
+    }
+
+    /**
+     * Retrieves all bookings for a specific user.
+     */
+    static async getUserBookings(userId: string) {
+        return prisma.booking.findMany({
+            where: { userId },
+            orderBy: { createdAt: "desc" },
         });
     }
 

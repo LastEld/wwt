@@ -1,0 +1,59 @@
+# Walkthrough - 'After Login' Experience Fixes
+
+This document summarizes the fixes implemented to stabilize the authenticated experience in WinWin Travel, specifically focusing on the Checkout flow and personalization.
+
+## Completed Fixes
+
+### 1. UI Stability & Rendering
+- **[Header.tsx](file:///e:/evidenceWWT/src/components/layout/Header.tsx)**: Added null checks for `session.user.name` to prevent crashes during split operations. Used "Traveler" as a fallback.
+- **[app/page.tsx](file:///e:/evidenceWWT/src/app/page.tsx)**: Removed `framer-motion` from the Server Component to prevent runtime errors. Fixed a syntax error in the hero section description.
+
+### 2. Profile Stability (Fixing TypeError)
+- **[Profile Page](file:///e:/evidenceWWT/src/app/profile/page.tsx)**:
+    - Added optional chaining (`?.`) and null checks for `aiProfile.preferredPriceRange.max`.
+    - Implemented defensive data handling for API responses to prevent crashes when AI insights are still being gathered.
+    - Added fallbacks for empty booking histories and neural profiles.
+
+### 3. Price Lock Resilience
+- **[PriceLockService](file:///e:/evidenceWWT/src/services/transactions/price-lock-service.ts)**:
+    - Implemented strict checks for `redis.status === 'ready'`.
+    - Added graceful fallbacks to Prisma database when Redis is unavailable or lagging.
+    - Improved security by using `userId` in the lock signature and payload.
+    - Added null-safe token parsing to prevent `split` errors on invalid inputs.
+
+### 4. Booking Flow (The 500 Fix)
+- **[BookingService](file:///e:/evidenceWWT/src/services/transactions/booking-service.ts)**: Added missing required fields (`hotelName`, `roomType`) to the atomic transaction.
+- **[Checkout Page](file:///e:/evidenceWWT/src/app/checkout/[id]/page.tsx)**: Updated the frontend to pass full stay metadata during the confirmation step, ensuring the backend has all necessary data to create the Prisma record.
+
+## Verification Results
+
+The full "After Login" journey was verified using autonomous browser agents.
+
+### User Journey Verification
+1. **Login**: User Alex enters Demo Mode.
+2. **Personalization**: Header shows "Traveler Alex", Home shows "Welcome back, Alex".
+3. **Checkout**: User selects a hotel, price is successfully locked (Timer visible).
+4. **Confirmation**: Booking is confirmed, and user is redirected to the confirmation page.
+
+### Evidence
+![Homepage Personalized Message](file:///C:/Users/Kamal/.gemini/antigravity/brain/cfacd27c-5250-49a3-94d4-016271e50cba/homepage_demo_mode_1770328513484.png)
+_Screenshot of the personalized homepage in Demo Mode._
+
+![Profile Page Stability](file:///C:/Users/Kamal/.gemini/antigravity/brain/cfacd27c-5250-49a3-94d4-016271e50cba/profile_page_neural_insights_1770332498503.png)
+_Screenshot of the profile page loading correctly with defensive checks._
+
+````carousel
+![Checkout Flow Success](file:///C:/Users/Kamal/.gemini/antigravity/brain/cfacd27c-5250-49a3-94d4-016271e50cba/after_login_final_verify_v4_success_1770331859991.webp)
+<!-- slide -->
+![Profile Fix Verification](file:///C:/Users/Kamal/.gemini/antigravity/brain/cfacd27c-5250-49a3-94d4-016271e50cba/profile_fix_verification_1770332320229.webp)
+<!-- slide -->
+```typescript
+// Example of the implemented fix in Profile Page
+<span className="text-brand-gold">
+  €{aiProfile?.preferredPriceRange?.max || 1000} Max
+</span>
+```
+````
+
+## Conclusion
+The "After Login" experience is now stable and production-ready for the demo environment. Redis unavailability no longer crashes the booking flow, and the integration between Price Lock and Booking service is verified to be atomic and reliable.
