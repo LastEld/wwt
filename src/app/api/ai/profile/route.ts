@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../../lib/auth.config";
 import { ProfileService } from "../../../../services/ai/profile-service";
+import { handleApiError } from "../../../../lib/api-error";
 
 /**
  * GET /api/ai/profile
@@ -18,8 +19,8 @@ export async function GET(req: NextRequest) {
         const profile = await ProfileService.getProfile(userId);
 
         return NextResponse.json(profile);
-    } catch (error: any) {
-        console.error("[Profile API] Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        const result = handleApiError(error, "ProfileAPI");
+        return NextResponse.json({ error: result.error }, { status: result.status });
     }
 }

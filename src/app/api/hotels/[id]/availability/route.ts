@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { MockAdapter } from "../../../../../integrations/mock/mock-adapter";
 import { HotelbedsAdapter } from "../../../../../integrations/hotelbeds/hotelbeds-adapter";
 import { PricingService } from "../../../../../services/pricing/pricing-service";
+import { handleApiError } from "../../../../../lib/api-error";
 
 export async function GET(
     req: NextRequest,
@@ -43,7 +44,8 @@ export async function GET(
             breakdown,
             roomsLeft: availability.roomsLeft
         });
-    } catch (error: any) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        const result = handleApiError(error, "HotelAvailabilityAPI");
+        return NextResponse.json({ error: result.error }, { status: result.status });
     }
 }

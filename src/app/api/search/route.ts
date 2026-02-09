@@ -1,10 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 import { searchOrchestrator } from "../../../services/search/search-orchestrator";
 import { NormalizedSearchRequest } from "../../../integrations/integration-adapter.interface";
+import { SearchRequestSchema, validateRequest } from "../../../lib/validations";
+import { withRateLimit } from "../../../lib/with-rate-limit";
+import { handleApiError } from "../../../lib/api-error";
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
     try {
-        const body = await req.json();
+        const raw = await req.json();
+        const parsed = validateRequest(SearchRequestSchema, raw);
+        if (!parsed.success) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
+        }
+        const body = parsed.data;
 
         // Basic request validation & normalization
         const searchRequest: NormalizedSearchRequest = {
@@ -29,7 +37,7 @@ export async function POST(req: NextRequest) {
         const { results, facets } = await searchOrchestrator.search(
             searchRequest,
             body.filters || {},
-            body.sort || 'relevance',
+            (body.sort || 'relevance') as any,
             body.userId, // In production, this comes from session
             undefined, // sessionId
             body.query // Natural Language Query
@@ -41,11 +49,17 @@ export async function POST(req: NextRequest) {
             results: results,
             facets: facets
         });
-    } catch (error: any) {
-        console.error("[Search API] Error:", error);
+    } catch (error) {
+        const result = handleApiError(error, "SearchAPI");
         return NextResponse.json(
-            { error: "Failed to process search request", details: error.message },
-            { status: 500 }
+            { error: result.error },
+            { status: result.status }
         );
     }
 }
+
+export const POST = withRateLimit(handlePost, {
+    limit: 30,
+    windowSeconds: 60,
+    prefix: 'search',
+});

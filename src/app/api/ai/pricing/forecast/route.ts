@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { PricingService } from "../../../../../services/ai/pricing-service";
 import { logger } from "../../../../../lib/logger";
+import { handleApiError } from "../../../../../lib/api-error";
 
 /**
  * API Route for Predictive Pricing Forecasts.
@@ -23,11 +24,11 @@ export async function POST(req: NextRequest) {
             forecast,
             generatedAt: new Date().toISOString()
         });
-    } catch (error: any) {
-        logger.error({ error: error.message }, "[Pricing API] Forecast failed");
+    } catch (error) {
+        const result = handleApiError(error, "PricingForecastAPI");
         return NextResponse.json(
-            { error: "Forecast generation failed", details: error.message },
-            { status: 500 }
+            { error: result.error },
+            { status: result.status }
         );
     }
 }

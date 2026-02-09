@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { communicationService, CommunicationTemplate, TemplateData } from "../../../../services/ai/communication-service";
 import { logger } from "../../../../lib/logger";
+import { handleApiError } from "../../../../lib/api-error";
 
 /**
  * API Route to generate AI-powered luxury communication drafts.
@@ -27,11 +28,11 @@ export async function POST(req: NextRequest) {
             content,
             generatedAt: new Date().toISOString(),
         });
-    } catch (error: any) {
-        logger.error({ error: error.message }, "[AI Content API] Generation failed");
+    } catch (error) {
+        const result = handleApiError(error, "GenerateContentAPI");
         return NextResponse.json(
-            { error: "Content generation failed", details: error.message },
-            { status: 500 }
+            { error: result.error },
+            { status: result.status }
         );
     }
 }

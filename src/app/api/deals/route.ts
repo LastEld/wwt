@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "../../../lib/prisma";
+import { handleApiError } from "../../../lib/api-error";
 
 /**
  * GET /api/deals
@@ -40,11 +41,11 @@ export async function GET() {
             deals,
             generatedAt: new Date().toISOString(),
         });
-    } catch (error: any) {
-        console.error("[Deals API] Error:", error);
+    } catch (error) {
+        const result = handleApiError(error, "DealsAPI");
         return NextResponse.json(
-            { error: "Failed to fetch deals", details: error.message },
-            { status: 500 }
+            { error: result.error },
+            { status: result.status }
         );
     }
 }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { proposalService } from "../../../../services/ai/proposal-service";
 import { StructuredItinerary } from "../../../../services/ai/itinerary-service";
 import { logger } from "../../../../lib/logger";
+import { handleApiError } from "../../../../lib/api-error";
 
 /**
  * API Route to synthesize branded proposals from itineraries.
@@ -25,11 +26,11 @@ export async function POST(req: NextRequest) {
             generatedAt: new Date().toISOString(),
             status: "ready"
         });
-    } catch (error: any) {
-        logger.error({ error: error.message }, "[Proposal API] Synthesis failed");
+    } catch (error) {
+        const result = handleApiError(error, "ProposalAPI");
         return NextResponse.json(
-            { error: "Proposal synthesis failed", details: error.message },
-            { status: 500 }
+            { error: result.error },
+            { status: result.status }
         );
     }
 }

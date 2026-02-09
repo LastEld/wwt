@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { itineraryService } from "../../../../services/ai/itinerary-service";
 import { logger } from "../../../../lib/logger";
+import { handleApiError } from "../../../../lib/api-error";
 
 /**
  * API Route to generate structured AI itineraries.
@@ -25,11 +26,11 @@ export async function POST(req: NextRequest) {
             generatedAt: new Date().toISOString(),
             status: "success"
         });
-    } catch (error: any) {
-        logger.error({ error: error.message, stack: error.stack }, "[Itinerary API] Generation failed");
+    } catch (error) {
+        const result = handleApiError(error, "ItineraryAPI");
         return NextResponse.json(
-            { error: "Itinerary generation failed", details: error.message, tip: "Check OpenAI API Key and quota" },
-            { status: 500 }
+            { error: result.error },
+            { status: result.status }
         );
     }
 }

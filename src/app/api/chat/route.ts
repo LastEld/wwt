@@ -2,13 +2,22 @@ import { NextRequest, NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../lib/auth.config";
 import { OpenAIService } from "../../../services/ai/openai-service";
+import { withRateLimit } from "../../../lib/with-rate-limit";
+import { handleApiError } from "../../../lib/api-error";
 
 export const dynamic = 'force-dynamic';
 
-export async function POST(req: NextRequest) {
+async function handlePost(req: NextRequest) {
     try {
         const session = await getServerSession(authOptions);
-        const { messages } = await req.json();
+        const raw = await req.json();
+
+        const { ChatRequestSchema, validateRequest } = await import("../../../lib/validations");
+        const parsed = validateRequest(ChatRequestSchema, raw);
+        if (!parsed.success) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
+        }
+        const { messages } = parsed.data;
 
         const stream = await OpenAIService.chatStream(
             messages,
@@ -54,8 +63,14 @@ export async function POST(req: NextRequest) {
             },
         });
 
-    } catch (error: any) {
-        console.error("[Chat API] Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        const result = handleApiError(error, "ChatAPI");
+        return NextResponse.json({ error: result.error }, { status: result.status });
     }
 }
+
+export const POST = withRateLimit(handlePost, {
+    limit: 20,
+    windowSeconds: 60,
+    prefix: 'chat',
+});

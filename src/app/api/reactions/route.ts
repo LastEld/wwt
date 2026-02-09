@@ -3,6 +3,8 @@ import { ReactionService } from "../../../services/ai/reaction-service";
 import { ProfileService } from "../../../services/ai/profile-service";
 import { getServerSession } from "next-auth";
 import { authOptions } from "../../../lib/auth.config";
+import { handleApiError } from "../../../lib/api-error";
+import { logger } from "../../../lib/logger";
 
 export async function GET(req: NextRequest) {
     try {
@@ -17,9 +19,9 @@ export async function GET(req: NextRequest) {
         const filtered = showAll ? reactions : reactions.filter(r => r.type === "LIKE");
 
         return NextResponse.json(filtered);
-    } catch (error: any) {
-        console.error("[Reactions API] GET Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        const result = handleApiError(error, "ReactionsAPI.GET");
+        return NextResponse.json({ error: result.error }, { status: result.status });
     }
 }
 
@@ -29,34 +31,35 @@ export async function POST(req: NextRequest) {
         if (!session) {
             return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
         }
-        const body = await req.json();
-        const { hotelId, integration, type, priceAtReaction, starRating, amenities } = body;
-
-        if (!hotelId || !type) {
-            return NextResponse.json({ error: "Missing required fields" }, { status: 400 });
+        const raw = await req.json();
+        const { ReactionRequestSchema, validateRequest } = await import("../../../lib/validations");
+        const parsed = validateRequest(ReactionRequestSchema, raw);
+        if (!parsed.success) {
+            return NextResponse.json({ error: parsed.error }, { status: 400 });
         }
+        const { hotelId, integration, type, priceAtReaction, starRating, amenities } = parsed.data;
 
         const reaction = await ReactionService.record({
             userId: (session?.user as any)?.id,
-            sessionId: "browser-session", // In production, use session cookie/fingerprint
+            sessionId: req.cookies.get("next-auth.session-token")?.value || (session.user as any).id,
             hotelId,
-            integration,
-            type,
+            integration: integration || "unknown",
+            type: type as any,
             priceAtReaction,
             starRating,
-            amenities
+            amenities,
         });
 
         // If logged in, trigger background re-learn
         if ((session?.user as any)?.id) {
             ProfileService.learnPreferences((session.user as any).id).catch((err: Error) =>
-                console.error(`[AI Learning] Error for user ${(session.user as any).id}:`, err)
+                logger.error({ err: { message: err.message, stack: err.stack }, userId: (session.user as any).id }, "[AI Learning] Background preference learning failed")
             );
         }
 
         return NextResponse.json({ success: true, reactionId: reaction.id });
-    } catch (error: any) {
-        console.error("[Reactions API] Error:", error);
-        return NextResponse.json({ error: error.message }, { status: 500 });
+    } catch (error) {
+        const result = handleApiError(error, "ReactionsAPI.POST");
+        return NextResponse.json({ error: result.error }, { status: result.status });
     }
 }

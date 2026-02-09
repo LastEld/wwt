@@ -1,16 +1,139 @@
 name: WinWin Travel CI
-on: [push, pull_request]
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+env:
+  NODE_VERSION: '20'
+  DATABASE_URL: postgresql://dummy:dummy@localhost:5432/winwin
+  NEXT_PUBLIC_APP_URL: https://winwin.travel
+
 jobs:
-  build:
+  ci:
+    name: Lint, Test, Type Check & Build
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v3
+      # -------------------------------------------------------
+      # 1. Checkout
+      # -------------------------------------------------------
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # -------------------------------------------------------
+      # 2. Node.js setup
+      # -------------------------------------------------------
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      # -------------------------------------------------------
+      # 3. Cache node_modules
+      # -------------------------------------------------------
+      - name: Cache node_modules
+        id: cache-node-modules
+        uses: actions/cache@v4
+        with:
+          path: node_modules
+          key: node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: |
+            node-modules-${{ runner.os }}-node${{ env.NODE_VERSION }}-
+
+      # -------------------------------------------------------
+      # 4. Install dependencies
+      # -------------------------------------------------------
       - name: Install dependencies
+        if: steps.cache-node-modules.outputs.cache-hit != 'true'
         run: npm ci --legacy-peer-deps
+
+      # -------------------------------------------------------
+      # 5. Generate Prisma client (needs DATABASE_URL)
+      # -------------------------------------------------------
+      - name: Generate Prisma client
+        run: npx prisma generate
+
+      # -------------------------------------------------------
+      # 6. Environment variable validation
+      # -------------------------------------------------------
+      - name: Validate required environment variables
+        run: |
+          echo "Validating required environment variables..."
+          MISSING=0
+
+          if [ -z "$DATABASE_URL" ]; then
+            echo "::error::DATABASE_URL is not set"
+            MISSING=1
+          else
+            echo "DATABASE_URL is set"
+          fi
+
+          if [ -z "$NEXT_PUBLIC_APP_URL" ]; then
+            echo "::error::NEXT_PUBLIC_APP_URL is not set"
+            MISSING=1
+          else
+            echo "NEXT_PUBLIC_APP_URL is set"
+          fi
+
+          if [ "$MISSING" -eq 1 ]; then
+            echo "::error::One or more required environment variables are missing."
+            exit 1
+          fi
+
+          echo "All required environment variables are present."
+
+      # -------------------------------------------------------
+      # 7. Lint check (existing step — kept as-is)
+      # -------------------------------------------------------
       - name: Lint check
         run: npm run lint
+
+      # -------------------------------------------------------
+      # 8. TypeScript type checking
+      # -------------------------------------------------------
+      - name: TypeScript type check
+        run: npx tsc --noEmit
+
+      # -------------------------------------------------------
+      # 9. Unit tests (BEFORE build — fail fast)
+      # -------------------------------------------------------
+      - name: Run unit tests
+        run: npm run test:unit
+
+      # -------------------------------------------------------
+      # 10. Build platform (existing step — kept as-is)
+      # -------------------------------------------------------
       - name: Build platform
         run: npm run build
-        env:
-          NEXT_PUBLIC_APP_URL: https://winwin.travel
-          DATABASE_URL: postgresql://dummy:dummy@localhost:5432/winwin
+
+      # -------------------------------------------------------
+      # 11. CI Summary
+      # -------------------------------------------------------
+      - name: CI Summary
+        if: always()
+        run: |
+          echo ""
+          echo "=========================================="
+          echo "  WinWin Travel CI — Pipeline Summary"
+          echo "=========================================="
+          echo ""
+          echo "  Node.js:       ${{ env.NODE_VERSION }}"
+          echo "  Branch:        ${{ github.ref_name }}"
+          echo "  Commit:        ${{ github.sha }}"
+          echo "  Triggered by:  ${{ github.event_name }}"
+          echo ""
+          echo "  Steps executed:"
+          echo "    1. Install dependencies"
+          echo "    2. Generate Prisma client"
+          echo "    3. Validate environment variables"
+          echo "    4. Lint check"
+          echo "    5. TypeScript type check"
+          echo "    6. Unit tests"
+          echo "    7. Build"
+          echo ""
+          echo "=========================================="
+          echo "  Pipeline completed."
+          echo "=========================================="
